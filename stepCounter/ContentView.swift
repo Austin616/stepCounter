@@ -7,14 +7,43 @@
 
 import SwiftUI
 
+enum ViewMode: String, CaseIterable {
+    case list = "List"
+    case chart = "Chart"
+}
+
 struct ContentView: View {
     @State private var healthStore = HealthStore()
+    @State private var selectedView: ViewMode = .list
 
     var body: some View {
         TabView {
             NavigationView {
-                StepListViewWithToday(steps: healthStore.steps)
-                    .navigationTitle("Home")
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        // Display today's steps
+                        TodayStepView(steps: Array(healthStore.steps))
+                        
+                        // Segmented Control
+                        Picker("View Mode", selection: $selectedView) {
+                            ForEach(ViewMode.allCases, id: \.self) { mode in
+                                Text(mode.rawValue).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .padding(.horizontal)
+                        
+                        // Conditional View
+                        switch selectedView {
+                        case .list:
+                            StepListView(steps: Array(healthStore.steps.dropFirst()))
+                        case .chart:
+                            StepChartView(steps: Array(healthStore.steps.dropFirst()))
+                        }
+                    }
+                    .padding()
+                }
+                .navigationTitle("Home")
             }
             .task {
                 await healthStore.requestAuthorization()
@@ -36,39 +65,6 @@ struct ContentView: View {
     }
 }
 
-// Custom wrapper view for the combined List
-struct StepListViewWithToday: View {
-    let steps: [Step]
-    var body: some View {
-        List {
-            // Today view as first item
-            Section {
-                TodayStepView(steps: steps)
-            }
-            // Then your step rows
-            Section {
-                ForEach(steps) { step in
-                    NavigationLink(destination: DetailedDayView(steps: [step])) {
-                        HStack {
-                            Circle()
-                                .frame(width: 20, height: 20)
-                                .foregroundColor(isUnderGoal(steps: step.count, goal: 5000) ? .red : .green)
-                            Text("\(step.count) steps")
-                            Spacer()
-                            Text(step.date.formatted(date: .abbreviated, time: .omitted))
-                        }
-                    }
-                }
-            }
-        }
-        .listRowBackground(Color.white)
-        .background(Color.white)
-        .scrollContentBackground(.hidden)
-    }
-}
-
-
 #Preview {
     ContentView()
 }
-

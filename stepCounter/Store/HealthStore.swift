@@ -12,6 +12,7 @@ import Observation
 enum HealthError: Error {
     case HealthDataNotAvailable
 }
+
 @Observable
 class HealthStore {
     
@@ -57,8 +58,43 @@ class HealthStore {
         }
     }
 
+    func fetchHourlySteps(for date: Date) async throws -> [Step] {
+        guard let healthStore = self.healthStore else {
+            throw HealthError.HealthDataNotAvailable
+        }
+        
+        guard let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount) else {
+            throw HKError(.errorInvalidArgument)
+        }
+        
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: date)
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
+        
+        let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: endOfDay)
+        let samplePredicate = HKSamplePredicate.quantitySample(type: stepType, predicate: predicate)
+        
+        let query = HKStatisticsCollectionQueryDescriptor(
+            predicate: samplePredicate,
+            options: .cumulativeSum,
+            anchorDate: startOfDay,
+            intervalComponents: DateComponents(hour: 1)
+        )
+        
+        let results = try await query.result(for: healthStore)
+        
+        var hourlySteps: [Step] = []
+        
+        results.enumerateStatistics(from: startOfDay, to: endOfDay) { statistics, _ in
+            let count = statistics.sumQuantity()?.doubleValue(for: .count()) ?? 0
+            let step = Step(count: Int(count), date: statistics.startDate)
+            hourlySteps.append(step)
+        }
+        
+        return hourlySteps
+    }
     
-    func requestAuthorization() async{
+    func requestAuthorization() async {
         guard let stepType = HKObjectType.quantityType(forIdentifier: HKQuantityTypeIdentifier.stepCount) else { return }
         guard let healthStore = self.healthStore else { return }
         
